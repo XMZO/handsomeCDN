@@ -23,7 +23,7 @@ document.addEventListener("visibilitychange", function() {
             
             visibleTimer = setTimeout(function() {
                 document.title = OriginTitle;
-            }, 500);
+            }, 1000);
         }
         
         // 重置隐藏标记
