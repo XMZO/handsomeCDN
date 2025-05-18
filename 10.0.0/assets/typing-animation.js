@@ -41,6 +41,7 @@
         d.height = window.innerHeight;
       });
       document.body.appendChild(d);
+      d.style.display = 'none'; // <--- 新增：默认隐藏 canvas
       var a = d.getContext("2d");
       var n = [];
       var j = 0;
@@ -100,6 +101,7 @@
         };
       }
       function o() {
+        d.style.display = ''; // <--- 新增：显示 canvas (或者 'block'，取决于原始 display 值)
         var t = e();
         var s = 5 + Math.round(Math.random() * 10);
         while (s--) {
@@ -130,6 +132,7 @@
           p = true;
         } else {
           p = false;
+          d.style.display = 'none'; // <--- 新增：动画结束时隐藏 canvas
         }
         a.clearRect(0, 0, d.width, d.height);
         for (var q = 0; q < n.length; ++q) {
