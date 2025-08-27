@@ -8,11 +8,11 @@
     const isAndroidOrLinuxOrApple = /Android|Linux|iPhone|iPad|iPod/i.test(platform);
     if (isMobileOrTablet || isCrawler || isAndroidOrLinuxOrApple) return; // 移动设备、爬虫或指定平台直接退出
 const videoConfig={
-        sources:Array.from({length:85},(_,i)=>`https://cdn.loli-moe.com/videos/background${i+1}.webm`),
+        sources:Array.from({length:85},(_,i)=>`https://cdn.loli-con.cn/videos/background${i+1}.webm`),
         interval:3600000, // 1小时
-        eggImage:"https://cdn.loli-moe.com/imgs/H.webp",
+        eggImage:"https://cdn.loli-con.cn/imgs/H.webp",
         eggMessage:"🎉 恭喜发现彩蛋！🥵🥵🥵",
-        specialVideos: [60, 80, 81].map(num => `https://cdn.loli-moe.com/videos/background${num}.webm`)
+        specialVideos: [60, 80, 81].map(num => `https://cdn.loli-con.cn/videos/background${num}.webm`)
     };
     const getRandomVideo=sources=>Math.random()<0.01?"":sources[Math.floor(Math.random()*sources.length)];
     const loadVideoData=(sources,interval)=>{
