@@ -4,6 +4,10 @@ var hiddenTimer, visibleTimer;
 var isHidden = false;
 var hideAt = 0; // 记录隐藏开始的时间戳
 var MIN_HIDE_TIME = 3000; // 阈值，毫秒
+// 在 setTimeout 恢复标题处，先判可见
+visibleTimer = setTimeout(function(){
+    if (document.visibilityState === 'visible') document.title = OriginTitle;
+  }, 1500);
 
 document.addEventListener("visibilitychange", function() {
     if (document.hidden) {
