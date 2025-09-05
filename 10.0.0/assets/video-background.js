@@ -31,7 +31,7 @@
       specialVideos: [60, 80, 81].map(n => `https://cdn.loli-con.cn/videos/background${n}.webm`),
   
       // 失败重试设置：最大次数 & 初始延迟（指数退避）
-      retry: { maxAttempts: 3, baseDelayMs: 1000, maxDelayMs: 30000 },
+      retry: { maxAttempts: 20, baseDelayMs: 1000, maxDelayMs: 30000 },
   
       // 是否在脚本里注入最小 CSS（若你站点有严格 CSP 或已在站点 CSS 写好，可设为 false）
       injectCSS: false,
