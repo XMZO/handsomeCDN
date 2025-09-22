@@ -23,7 +23,8 @@
       cacheIntervalMs: 60 * 60 * 1000,
   
       // 1% 概率不放视频（彩蛋降级）
-      eggProbability: 0.01,
+      eggProbability: 0.01,       // 桌面端彩蛋概率（1%）
+      mobileEggProbability: 0.005,// 移动端彩蛋概率（0.5%）
       eggImage: 'https://cdn.loli-con.cn/imgs/H.webp',
       eggMessage: '🎉 恭喜发现彩蛋！🥵🥵🥵',
   
@@ -64,10 +65,19 @@
     const prefersReducedMotion = CFG.respectUserPreferences && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const saveData = CFG.respectUserPreferences && !!(navigator.connection && navigator.connection.saveData);
   
-    if (isCrawler || isMobileOrTablet || prefersReducedMotion || saveData) {
-      // 触发“彩蛋降级”以避免加载视频（也可直接 return，不展示彩蛋）
+    if (isCrawler || prefersReducedMotion || saveData) {
+      // 始终彩蛋
       showEgg(CFG.eggMessage, CFG.eggImage);
       return;
+    }
+    
+    if (isMobileOrTablet) {
+      // 移动端有概率彩蛋，否则走视频逻辑
+      if (Math.random() < CFG.mobileEggProbability) {
+        showEgg(CFG.eggMessage, CFG.eggImage);
+        return;
+      }
+      // 不 return，后续继续尝试加载视频
     }
   
     /** =========================
