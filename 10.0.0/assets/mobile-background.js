@@ -60,10 +60,7 @@
     } catch (e) { return []; }
   }
   function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-  function preload(url) {
-    const img = new Image();
-    img.src = url;
-  }  
+  function preload(url) { const img = new Image(); img.referrerPolicy = 'origin'; img.src = url; }
   function applyBg(url) {
     const bgDecl = `url(${JSON.stringify(url)}) center center no-repeat fixed ${CFG.fallbackColor};`;
     const css = `
