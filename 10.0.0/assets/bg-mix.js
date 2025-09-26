@@ -3,7 +3,7 @@
   const CFG = {
     manifest: 'https://cdn.loli-con.cn/imgs/bg-manifest.json',
     base: 'https://cdn.loli-con.cn/imgs/',
-    cacheMs: 3 * 60 * 1000, // 3分钟
+    cacheMs: 0,
     fallbackColor: '#6A6B6F',
     fadeMs: 400,
     mobileQuery: '(max-width: 767px)'
