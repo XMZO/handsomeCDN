@@ -72,12 +72,11 @@
     }
     
     if (isMobileOrTablet) {
-      // 移动端有概率彩蛋，否则走视频逻辑
+      // 移动端：小概率显示彩蛋，否则什么都不做
       if (Math.random() < CFG.mobileEggProbability) {
         showEgg(CFG.eggMessage, CFG.eggImage);
-        return;
       }
-      // 不 return，后续继续尝试加载视频
+      return; // 不再继续加载视频
     }
   
     /** =========================
