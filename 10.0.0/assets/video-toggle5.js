@@ -21,7 +21,7 @@
     toggleBtn.title = "切换视频背景";
     toggleBtn.style.cssText = `
       position: fixed;
-      bottom: 200px;
+      bottom: 180px;
       right: 20px;
       background: rgba(255,255,255,0.15);
       backdrop-filter: blur(6px);
