@@ -4,17 +4,18 @@
   function initToggle() {
     const video = document.getElementById("DynamicWallpaper");
     if (!video) {
-      console.log("[video-toggle] 未找到 DynamicWallpaper，可能是移动端，不显示开关");
+      console.log("[video-toggle] 未找到 DynamicWallpaper，可能是移动端或视频未加载");
       return;
     }
 
     // 创建小开关按钮
     const toggleBtn = document.createElement("button");
     toggleBtn.textContent = "🎬"; // 初始图标：视频开启
+    toggleBtn.title = "切换视频背景"; // Tooltip 提示
     toggleBtn.style.cssText = `
       position: fixed;
-      bottom: 80px; /* 往上调，避免和静音按钮重合 */
-      right: 20px;
+      bottom: 120px; /* 再往上，避免和静音按钮重合 */
+      right: 20px;   /* 靠右边 */
       background: rgba(255,255,255,0.3);
       backdrop-filter: blur(10px);
       border: none;
@@ -43,19 +44,33 @@
       if (videoEnabled) {
         video.pause();
         video.style.display = "none";
-        toggleBtn.textContent = "🖼️"; // 静态背景
+        toggleBtn.textContent = "🖼️"; 
+        toggleBtn.title = "恢复视频背景"; // 更新 tooltip
       } else {
         video.style.display = "block";
         video.play();
-        toggleBtn.textContent = "🎬"; // 视频模式
+        toggleBtn.textContent = "🎬"; 
+        toggleBtn.title = "关闭视频背景"; // 更新 tooltip
       }
       videoEnabled = !videoEnabled;
     });
   }
 
+  // 延迟检测，确保 video-background.js 已经插入元素
+  function waitForVideo(attempts = 10) {
+    const video = document.getElementById("DynamicWallpaper");
+    if (video) {
+      initToggle();
+    } else if (attempts > 0) {
+      setTimeout(() => waitForVideo(attempts - 1), 500);
+    } else {
+      console.warn("[video-toggle] 超时，未检测到 DynamicWallpaper");
+    }
+  }
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initToggle, { once: true });
+    document.addEventListener("DOMContentLoaded", () => waitForVideo(), { once: true });
   } else {
-    initToggle();
+    waitForVideo();
   }
 })();
