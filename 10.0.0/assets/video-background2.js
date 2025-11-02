@@ -220,7 +220,7 @@
     if (/[\x00-\x1F\x7F-\x9F\uFFFD]/.test(url)) return false;
     
     // 长度检查
-    if (url.length < 50 || url.length > 100) return false;
+    if (url.length > 100) return false;
     
     return true;
   }
