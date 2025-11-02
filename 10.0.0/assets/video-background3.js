@@ -184,9 +184,13 @@
       if (!isValidVideoUrl(video)) {
         throw new Error('Invalid URL format');
       }
-      
-      if (typeof time !== 'number' || time <= 0 || time > Date.now()) {
+
+      if (typeof time !== 'number' || time <= 0) {
         throw new Error('Invalid time');
+      }
+
+      if (time - Date.now() > 30 * 24 * 60 * 60 * 1000) {
+        throw new Error('Clock skew too large');
       }
       
       if (Date.now() - time > CFG.cacheIntervalMs) {
@@ -220,7 +224,7 @@
     if (/[\x00-\x1F\x7F-\x9F\uFFFD]/.test(url)) return false;
     
     // 长度检查
-    if (url.length > 100) return false;
+    if (url.length > 500) return false;
     
     return true;
   }
