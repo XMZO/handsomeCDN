@@ -72,7 +72,8 @@
   
   // ✅ 用户偏好设置：显示彩蛋（尊重用户但给点惊喜）
   if (prefersReducedMotion || saveData) {
-    showEgg(CFG.eggMessage, CFG.eggImage);
+    // showEgg(CFG.eggMessage, CFG.eggImage);
+    // 别想要彩蛋！😤
     return;
   }
   
