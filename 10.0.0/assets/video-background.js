@@ -213,7 +213,7 @@
     if (typeof url !== 'string') return false;
     
     // 正则严格匹配
-    const pattern = /^https:\/\/cdn\.loli-con\.cn\/videos\/background(\d{1,3})\.webm$/;
+    const pattern = /^https:\/\/raw\.loliloli\.mom\/videos\/background(\d{1,3})\.webm$/;
     const match = url.match(pattern);
     if (!match) return false;
     
