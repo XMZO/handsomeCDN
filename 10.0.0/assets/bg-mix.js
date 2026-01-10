@@ -1,8 +1,8 @@
 (function () {
   'use strict';
   const CFG = {
-    manifest: 'https://cdn.loli-con.cn/imgs/bg-manifest.json',
-    base: 'https://cdn.loli-con.cn/imgs/',
+    manifest: 'https://raw.loliloli.mom/imgs/bg-manifest.json',
+    base: 'https://raw.loliloli.mom/imgs/',
     fallbackColor: '#6A6B6F',
     mobileQuery: '(max-width: 767px)'
   };

@@ -17,7 +17,7 @@
    *  ========================= */
   const CFG = {
     // 背景视频资源列表（沿用你的 1..85，webm）
-    sources: Array.from({ length: 85 }, (_, i) => `https://cdn.loli-con.cn/videos/background${i + 1}.webm`),
+    sources: Array.from({ length: 85 }, (_, i) => `https://raw.loliloli.mom/videos/background${i + 1}.webm`),
 
     // 结果缓存（本地存储）时长：1 小时
     cacheIntervalMs: 60 * 60 * 1000,
@@ -25,11 +25,11 @@
     // 1% 概率不放视频（彩蛋降级）
     eggProbability: 0.01,       // 桌面端彩蛋概率（1%）
     mobileEggProbability: 0.005,// 移动端彩蛋概率（0.5%）
-    eggImage: 'https://cdn.loli-con.cn/imgs/H.webp',
+    eggImage: 'https://raw.loliloli.mom/imgs/H.webp',
     eggMessage: '🎉 恭喜发现彩蛋！🥵🥵🥵',
 
     // 仅当命中这些"特定视频"时，显示"解除静音"按钮（保持你原有逻辑）
-    specialVideos: [60, 80, 81].map(n => `https://cdn.loli-con.cn/videos/background${n}.webm`),
+    specialVideos: [60, 80, 81].map(n => `https://raw.loliloli.mom/videos/background${n}.webm`),
 
     // 失败重试设置：最大次数 & 初始延迟（指数退避）
     retry: { maxAttempts: 20, baseDelayMs: 1000, maxDelayMs: 30000 },
