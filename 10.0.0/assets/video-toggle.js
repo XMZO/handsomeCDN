@@ -67,6 +67,10 @@
     `;
     document.body.appendChild(toggleBtn);
 
+    // SVG 图标（Feather Icons 风格）
+    const SVG_PLAY = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+    const SVG_PAUSE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+
     // 更新按钮 & 视频
     function updateButton() {
       if (videoEnabled) {
@@ -74,14 +78,14 @@
         video.preload = "auto";             // 恢复预加载
         video.style.display = "block";
         video.play();
-        toggleBtn.textContent = "🎬";
+        toggleBtn.innerHTML = SVG_PLAY;
         toggleBtn.title = "关闭视频背景";
       } else {
         video.pause();
         video.dataset.userDisabled = "true"; // 标记用户手动关闭
         video.preload = "none";              // 停止后台加载
         video.style.display = "none";
-        toggleBtn.textContent = "🖼️";
+        toggleBtn.innerHTML = SVG_PAUSE;
         toggleBtn.title = "恢复视频背景";
       }
     }
