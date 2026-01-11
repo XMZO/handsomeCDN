@@ -41,7 +41,7 @@
     respectUserPreferences: true,
 
     // 是否在标签页不可见时暂停、可见时恢复（省资源）
-    pauseOnHidden: true,
+    pauseOnHidden: false,
 
     // 'original' = 恢复原来白底圆形按钮样式
     uiStyle: 'original',
@@ -328,9 +328,9 @@
       btn.textContent = video.muted ? '🔇' : '🔊';
       btn.setAttribute('aria-pressed', String(!video.muted));
       if (!video.muted) {
-        isFirstUnmute = false;
-        video.play().catch(() => { });
         showFirstUnmuteBanner();
+        video.play().catch(() => { });
+        isFirstUnmute = false;
       }
     }
 
