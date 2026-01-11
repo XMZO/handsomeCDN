@@ -42,15 +42,15 @@
 
     // 是否在标签页不可见时暂停、可见时恢复（省资源）
     pauseOnHidden: true,
-    
+
     // 'original' = 恢复原来白底圆形按钮样式
     uiStyle: 'original',
-                  
+
     // 第一次点击页面就自动取消静音（只执行一次）
     autoUnmuteOnFirstClick: true,
-    
+
     // 首次取消静音时弹出彩色提示条
-    showFirstUnmuteBanner: true       
+    showFirstUnmuteBanner: true
   };
 
   /** =========================
@@ -69,14 +69,14 @@
     console.info('[video-bg] 检测到爬虫，跳过加载');
     return;
   }
-  
+
   // ✅ 用户偏好设置：显示彩蛋（尊重用户但给点惊喜）
   if (prefersReducedMotion || saveData) {
     // showEgg(CFG.eggMessage, CFG.eggImage);
     // 别想要彩蛋！😤
     return;
   }
-  
+
   // ✅ 移动端：小概率显示彩蛋，否则什么都不做
   if (isMobileOrTablet) {
     if (Math.random() < CFG.mobileEggProbability) {
@@ -140,17 +140,18 @@
   if (CFG.pauseOnHidden) {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        try { videoEl.pause(); } catch (_) {}
+        try { videoEl.pause(); } catch (_) { }
       } else {
-        try { videoEl.play(); } catch (_) {}
+        try { videoEl.play(); } catch (_) { }
       }
     });
   }
 
   // 用户交互兜底：任意点击尝试恢复播放
   document.addEventListener('click', () => {
+    if (videoEl.dataset.userDisabled) return;  // 尊重用户手动关闭的选择
     if (videoEl.isConnected && videoEl.paused) {
-      videoEl.play().catch(() => {});
+      videoEl.play().catch(() => { });
     }
   }, { passive: true });
 
@@ -170,18 +171,18 @@
     try {
       const raw = localStorage.getItem('randomVideoData');
       if (!raw) return null;
-      
+
       const data = JSON.parse(raw);
       if (typeof data !== 'object' || data === null) {
         throw new Error('Invalid data');
       }
-      
+
       const { video, time } = data;
-      
+
       if (typeof video !== 'string' || !video) {
         throw new Error('Invalid video');
       }
-      
+
       if (!isValidVideoUrl(video)) {
         throw new Error('Invalid URL format');
       }
@@ -193,48 +194,48 @@
       if (time - Date.now() > 30 * 24 * 60 * 60 * 1000) {
         throw new Error('Clock skew too large');
       }
-      
+
       if (Date.now() - time > CFG.cacheIntervalMs) {
         return null;
       }
-      
+
       return video;
-      
+
     } catch (err) {
       console.warn('[video-bg] 缓存异常，已清理:', err.message);
-      try { 
-        localStorage.removeItem('randomVideoData'); 
-      } catch(_) {}
+      try {
+        localStorage.removeItem('randomVideoData');
+      } catch (_) { }
       return null;
     }
   }
-  
+
   function isValidVideoUrl(url) {
     if (typeof url !== 'string') return false;
-    
+
     // 正则严格匹配
     const pattern = /^https:\/\/raw\.loliloli\.mom\/videos\/background(\d{1,3})\.webm$/;
     const match = url.match(pattern);
     if (!match) return false;
-    
+
     // 范围检查
     const num = parseInt(match[1], 10);
     if (num < 1 || num > 85) return false;
-    
+
     // 检查不可见字符
     if (/[\x00-\x1F\x7F-\x9F\uFFFD]/.test(url)) return false;
-    
+
     // 长度检查
     if (url.length > 500) return false;
-    
+
     return true;
   }
 
   function pickAndCacheRandomVideo(sources, intervalMs) {
-    const video = Math.random() < CFG.eggProbability 
-      ? '' 
+    const video = Math.random() < CFG.eggProbability
+      ? ''
       : sources[Math.floor(Math.random() * sources.length)];
-    
+
     // 只缓存有效视频，不缓存彩蛋
     if (video) {
       try {
@@ -247,7 +248,7 @@
         console.warn('[video-bg] 缓存失败:', err.message);
       }
     }
-    
+
     return video;
   }
 
@@ -266,29 +267,29 @@
       const style = document.createElement('style');
       style.textContent = css;
       document.head.appendChild(style);
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function safeLoadAndPlay(video) {
-    try { video.load(); } catch (_) {}
-    try { video.play(); } catch (_) {}
+    try { video.load(); } catch (_) { }
+    try { video.play(); } catch (_) { }
   }
 
   function attachRetryWithBackoff(video, retryCfg) {
     let attempts = 0;
-    
+
     video.addEventListener('error', () => {
       attempts += 1;
-      
+
       if (attempts > retryCfg.maxAttempts) {
         console.warn('[video-bg] 加载失败次数过多，放弃加载');
         video.remove();
         return;
       }
-      
+
       const delay = Math.min(retryCfg.maxDelayMs, retryCfg.baseDelayMs * Math.pow(2, attempts - 1));
       console.warn(`[video-bg] 加载错误，${delay}ms 后重试（第 ${attempts}/${retryCfg.maxAttempts} 次）…`);
-      
+
       setTimeout(() => {
         safeLoadAndPlay(video);
       }, delay);
@@ -296,103 +297,103 @@
   }
 
   function mountUnmuteButton(video) {
-      let isFirstUnmute = true;
-      let hasUnmutedOnceByDoc = false;
-    
-      function showFirstUnmuteBanner() {
-        if (!CFG.showFirstUnmuteBanner || !isFirstUnmute) return;
-        const n = document.createElement('div');
-        n.textContent = '😮发现特殊动态背景，已开启声音！';
-        n.style.cssText = [
-          'position:fixed',
-          'bottom:80px',
-          'right:20px',
-          'background:linear-gradient(135deg, rgba(255,0,0,0.2), rgba(0,255,0,0.2), rgba(0,0,255,0.2))',
-          'backdrop-filter:blur(10px)',
-          'color:#FF69B4',
-          'padding:8px 16px',
-          'border-radius:8px',
-          'z-index:9999',
-          'font-size:12px',
-          'box-shadow:0 4px 15px rgba(0,0,0,0.2)',
-          'border:1px solid rgba(255,255,255,0.2)'
-        ].join(';');
-        document.body.appendChild(n);
-        setTimeout(() => n.remove(), 3000);
-      }
-    
-      function toggleMute(ev) {
-        if (ev) ev.stopPropagation();
-        video.muted = !video.muted;
-        btn.textContent = video.muted ? '🔇' : '🔊';
-        btn.setAttribute('aria-pressed', String(!video.muted));
-        if (!video.muted) {
-          isFirstUnmute = false;
-          video.play().catch(() => {});
-          showFirstUnmuteBanner();
-        }
-      }
-    
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.id = 'DynamicWallpaperUnmute';
-      btn.setAttribute('aria-pressed', 'false');
-      btn.setAttribute('aria-label', '切换背景视频静音状态');
+    let isFirstUnmute = true;
+    let hasUnmutedOnceByDoc = false;
+
+    function showFirstUnmuteBanner() {
+      if (!CFG.showFirstUnmuteBanner || !isFirstUnmute) return;
+      const n = document.createElement('div');
+      n.textContent = '😮发现特殊动态背景，已开启声音！';
+      n.style.cssText = [
+        'position:fixed',
+        'bottom:80px',
+        'right:20px',
+        'background:linear-gradient(135deg, rgba(255,0,0,0.2), rgba(0,255,0,0.2), rgba(0,0,255,0.2))',
+        'backdrop-filter:blur(10px)',
+        'color:#FF69B4',
+        'padding:8px 16px',
+        'border-radius:8px',
+        'z-index:9999',
+        'font-size:12px',
+        'box-shadow:0 4px 15px rgba(0,0,0,0.2)',
+        'border:1px solid rgba(255,255,255,0.2)'
+      ].join(';');
+      document.body.appendChild(n);
+      setTimeout(() => n.remove(), 3000);
+    }
+
+    function toggleMute(ev) {
+      if (ev) ev.stopPropagation();
+      video.muted = !video.muted;
       btn.textContent = video.muted ? '🔇' : '🔊';
-    
-      if (CFG.uiStyle === 'original') {
-        btn.style.cssText = [
-          'position:fixed',
-          'bottom:20px',
-          'right:120px',
-          'background:rgba(255,255,255,0.3)',
-          'backdrop-filter:blur(10px)',
-          'color:black',
-          'border:none',
-          'padding:8px 12px',
-          'border-radius:50%',
-          'cursor:pointer',
-          'z-index:9999',
-          'font-size:14px',
-          'box-shadow:0 2px 10px rgba(0,0,0,0.1)',
-          'transition:opacity .3s ease',
-          'opacity:0.9'
-        ].join(';');
-        let hideTimeout;
-        btn.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); btn.style.opacity = '1'; });
-        btn.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { btn.style.opacity = '0'; }, 3000); });
-      } else {
-        btn.style.position = 'fixed';
-        btn.style.bottom = '20px';
-        btn.style.right = '20px';
-        btn.style.background = 'rgba(0,0,0,0.5)';
-        btn.style.color = '#fff';
-        btn.style.border = '1px solid rgba(255,255,255,0.3)';
-        btn.style.borderRadius = '8px';
-        btn.style.padding = '8px 10px';
-        btn.style.fontSize = '14px';
-        btn.style.cursor = 'pointer';
-        btn.style.zIndex = '9999';
-        btn.style.backdropFilter = 'blur(4px)';
-        btn.style.transition = 'opacity .3s ease';
-        btn.style.opacity = '0.9';
-        btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
-        btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.9'; });
+      btn.setAttribute('aria-pressed', String(!video.muted));
+      if (!video.muted) {
+        isFirstUnmute = false;
+        video.play().catch(() => { });
+        showFirstUnmuteBanner();
       }
-    
-      btn.addEventListener('click', toggleMute);
-    
-      if (CFG.autoUnmuteOnFirstClick) {
-        document.addEventListener('click', () => {
-          if (video.muted && !hasUnmutedOnceByDoc) {
-            hasUnmutedOnceByDoc = true;
-            toggleMute();
-          }
-        }, { passive: true });
-      }
-    
-      document.body.appendChild(btn);
-    }      
+    }
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'DynamicWallpaperUnmute';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.setAttribute('aria-label', '切换背景视频静音状态');
+    btn.textContent = video.muted ? '🔇' : '🔊';
+
+    if (CFG.uiStyle === 'original') {
+      btn.style.cssText = [
+        'position:fixed',
+        'bottom:20px',
+        'right:120px',
+        'background:rgba(255,255,255,0.3)',
+        'backdrop-filter:blur(10px)',
+        'color:black',
+        'border:none',
+        'padding:8px 12px',
+        'border-radius:50%',
+        'cursor:pointer',
+        'z-index:9999',
+        'font-size:14px',
+        'box-shadow:0 2px 10px rgba(0,0,0,0.1)',
+        'transition:opacity .3s ease',
+        'opacity:0.9'
+      ].join(';');
+      let hideTimeout;
+      btn.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); btn.style.opacity = '1'; });
+      btn.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { btn.style.opacity = '0'; }, 3000); });
+    } else {
+      btn.style.position = 'fixed';
+      btn.style.bottom = '20px';
+      btn.style.right = '20px';
+      btn.style.background = 'rgba(0,0,0,0.5)';
+      btn.style.color = '#fff';
+      btn.style.border = '1px solid rgba(255,255,255,0.3)';
+      btn.style.borderRadius = '8px';
+      btn.style.padding = '8px 10px';
+      btn.style.fontSize = '14px';
+      btn.style.cursor = 'pointer';
+      btn.style.zIndex = '9999';
+      btn.style.backdropFilter = 'blur(4px)';
+      btn.style.transition = 'opacity .3s ease';
+      btn.style.opacity = '0.9';
+      btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
+      btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.9'; });
+    }
+
+    btn.addEventListener('click', toggleMute);
+
+    if (CFG.autoUnmuteOnFirstClick) {
+      document.addEventListener('click', () => {
+        if (video.muted && !hasUnmutedOnceByDoc) {
+          hasUnmutedOnceByDoc = true;
+          toggleMute();
+        }
+      }, { passive: true });
+    }
+
+    document.body.appendChild(btn);
+  }
 
   function showEgg(message, imageUrl) {
     const wrap = document.createElement('div');

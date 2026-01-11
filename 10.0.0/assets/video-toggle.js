@@ -31,11 +31,11 @@
     // 写缓存
     function writeCache(enabled) {
       try {
-        localStorage.setItem(CFG.cacheKey, JSON.stringify({ 
-          enabled, 
-          time: Date.now() 
+        localStorage.setItem(CFG.cacheKey, JSON.stringify({
+          enabled,
+          time: Date.now()
         }));
-      } catch {}
+      } catch { }
     }
 
     // 初始状态
@@ -65,12 +65,16 @@
     // 更新按钮 & 视频
     function updateButton() {
       if (videoEnabled) {
+        delete video.dataset.userDisabled;  // 移除手动关闭标记
+        video.preload = "auto";             // 恢复预加载
         video.style.display = "block";
         video.play();
         toggleBtn.textContent = "🎬";
         toggleBtn.title = "关闭视频背景";
       } else {
         video.pause();
+        video.dataset.userDisabled = "true"; // 标记用户手动关闭
+        video.preload = "none";              // 停止后台加载
         video.style.display = "none";
         toggleBtn.textContent = "🖼️";
         toggleBtn.title = "恢复视频背景";
