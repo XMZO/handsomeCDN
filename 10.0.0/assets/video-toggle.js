@@ -48,17 +48,22 @@
       position: fixed;
       bottom: ${CFG.bottom}px;
       right: ${CFG.right}px;
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(6px);
-      border: none;
-      padding: 5px 9px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
       border-radius: 50%;
       cursor: pointer;
       z-index: 10000;
-      font-size: 13px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      opacity: 0.15;
-      transition: opacity 0.3s ease, background 0.3s ease;
+      font-size: 18px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      opacity: 0.35;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     `;
     document.body.appendChild(toggleBtn);
 
@@ -84,12 +89,16 @@
 
     // 悬停时显示
     toggleBtn.addEventListener("mouseenter", () => {
-      toggleBtn.style.opacity = "0.8";
-      toggleBtn.style.background = "rgba(255,255,255,0.4)";
+      toggleBtn.style.opacity = "1";
+      toggleBtn.style.background = "rgba(255,255,255,0.25)";
+      toggleBtn.style.transform = "scale(1.1)";
+      toggleBtn.style.boxShadow = "0 6px 24px rgba(0,0,0,0.18)";
     });
     toggleBtn.addEventListener("mouseleave", () => {
-      toggleBtn.style.opacity = "0.15";
-      toggleBtn.style.background = "rgba(255,255,255,0.15)";
+      toggleBtn.style.opacity = "0.35";
+      toggleBtn.style.background = "rgba(255,255,255,0.12)";
+      toggleBtn.style.transform = "scale(1)";
+      toggleBtn.style.boxShadow = "0 4px 16px rgba(0,0,0,0.12)";
     });
 
     // 点击切换
