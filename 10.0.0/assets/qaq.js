@@ -59,9 +59,9 @@
       var gap = now - last;
       if (gap > GAP_MS) {
         STATE.isHidden = true;
-        STATE.hiddenAt = now;
+        STATE.hiddenAt = Date.now();
         scheduleCrashTitle();
-      } else if (STATE.isHidden && (now - STATE.hiddenAt) > MIN_HIDE_TIME) {
+      } else if (STATE.isHidden && (Date.now() - STATE.hiddenAt) > MIN_HIDE_TIME) {
         STATE.isHidden = false;
         showBackTitle(true); // 可疑环境：直接给“你开挂了？”
       }

@@ -1,211 +1,231 @@
-/* 视频背景（完整版重写 + 详细注释）
- * 主要目标：
- * 1) 保留原有：随机选取 .webm 视频、结果缓存 1 小时、1% 概率"彩蛋"降级。
- * 2) 改进稳定性与可维护性：去掉 eval、限定选择器、不误伤 Linux 桌面、错误重试带退避、
- *    尊重用户"省流量/减少动态"偏好、可选注入最小 CSS、可访问性更好。
- *
- * 使用方式：
- * <script src="/path/video-background.js" defer></script>
- * 建议在你的全站 CSS 里添加 #DynamicWallpaper 的样式（也可让脚本注入最小 CSS，见 CFG.injectCSS）。
+/* 视频背景（HLS 版）
+ * 通过 m3u8 + ts 分片加载背景视频，突破 GitHub 100MB 单文件限制。
+ * Safari 走原生 HLS，其他浏览器通过 hls.js（动态加载）播放。
  */
 
 (function () {
   'use strict';
 
-  /** =========================
-   *  配置区（按需调整）
-   *  ========================= */
   const CFG = {
-    // 背景视频资源列表（沿用你的 1..85，webm）
-    sources: Array.from({ length: 85 }, (_, i) => `https://raw.loliloli.mom/videos/background${i + 1}.webm`),
+    // ========== 视频源 ==========
+    videoBase: 'https://raw.loliloli.mom/videos_hls/',   // 视频根路径（末尾带 /）
+    videoCount: 85,                                       // 视频总数（background1 ~ background85）
+    specialVideos: [60, 80, 81],                          // 有声视频编号（会显示解除静音按钮）
 
-    // 结果缓存（本地存储）时长：1 小时
-    cacheIntervalMs: 60 * 60 * 1000,
+    // ========== hls.js ==========
+    hlsJsUrl: 'https://lib.loliloli.mom/handsomeCDN@master/10.0.0/assets/hls.min.js',
 
-    // 1% 概率不放视频（彩蛋降级）
-    eggProbability: 0.01,       // 桌面端彩蛋概率（1%）
-    mobileEggProbability: 0.005,// 移动端彩蛋概率（0.5%）
+    // ========== 缓存 ==========
+    cacheKey: 'randomVideoData',                          // localStorage 键名
+    cacheIntervalMs: 60 * 60 * 1000,                      // 缓存时长（1 小时）
+
+    // ========== 彩蛋 ==========
+    eggProbability: 0.01,                                 // 桌面端彩蛋概率（1%）
+    mobileEggProbability: 0.005,                          // 移动端彩蛋概率（0.5%）
     eggImage: 'https://raw.loliloli.mom/imgs/H.webp',
     eggMessage: '🎉 恭喜发现彩蛋！🥵🥵🥵',
 
-    // 仅当命中这些"特定视频"时，显示"解除静音"按钮（保持你原有逻辑）
-    specialVideos: [60, 80, 81].map(n => `https://raw.loliloli.mom/videos/background${n}.webm`),
+    // ========== Safari 重试 ==========
+    retryMaxAttempts: 5,                                  // 最大重试次数
+    retryBaseDelayMs: 1000,                               // 初始延迟
+    retryMaxDelayMs: 30000,                               // 最大延迟
 
-    // 失败重试设置：最大次数 & 初始延迟（指数退避）
-    retry: { maxAttempts: 20, baseDelayMs: 1000, maxDelayMs: 30000 },
+    // ========== 解除静音提示 ==========
+    unmuteBannerText: '😮发现特殊动态背景，已开启声音！',
+    unmuteBannerDurationMs: 3000,                         // 提示条显示时长
 
-    // 是否在脚本里注入最小 CSS（若你站点有严格 CSP 或已在站点 CSS 写好，可设为 false）
-    injectCSS: false,
-
-    // 是否尊重用户的"减少动态/省流量"偏好（建议 true）
-    respectUserPreferences: true,
-
-    // 是否在标签页不可见时暂停、可见时恢复（省资源）
-    pauseOnHidden: false,
-
-    // 'original' = 恢复原来白底圆形按钮样式
-    uiStyle: 'original',
-
-    // 第一次点击页面就自动取消静音（只执行一次）
-    autoUnmuteOnFirstClick: true,
-
-    // 首次取消静音时弹出彩色提示条
-    showFirstUnmuteBanner: true
+    // ========== 功能开关 ==========
+    injectCSS: false,                                     // 是否注入最小 CSS
+    respectUserPreferences: true,                         // 是否尊重 reduced-motion / save-data
+    pauseOnHidden: false,                                 // 标签页不可见时暂停
+    autoUnmuteOnFirstClick: true,                         // 首次点击页面自动取消静音（仅特殊视频）
+    showFirstUnmuteBanner: true,                          // 首次取消静音时弹出提示条
+    uiStyle: 'original'                                   // 解除静音按钮样式
   };
 
-  /** =========================
-   *  运行前环境判断（更温和，不误伤 Linux 桌面）
-   *  ========================= */
+  // 由 CFG 派生的 URL 列表
+  const sources = Array.from({ length: CFG.videoCount }, (_, i) =>
+    CFG.videoBase + 'background' + (i + 1) + '/index.m3u8'
+  );
+  const specialVideoUrls = CFG.specialVideos.map(n =>
+    CFG.videoBase + 'background' + n + '/index.m3u8'
+  );
+
+  /* ========================
+   * 环境检测 & 提前退出
+   * ======================== */
   const ua = navigator.userAgent || '';
   const isCrawler = /Googlebot|Bingbot|Slurp|DuckDuckBot|Baiduspider|YandexBot|Sogou|Exabot|Chrome-Lighthouse|HeadlessChrome|PhantomJS|facebot|ia_archiver/i.test(ua);
   const isMobileOrTablet = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
-
-  // 尊重用户偏好：减少动态 / 省流量
   const prefersReducedMotion = CFG.respectUserPreferences && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const saveData = CFG.respectUserPreferences && !!(navigator.connection && navigator.connection.saveData);
 
-  // ✅ 爬虫：直接返回，什么都不显示（节省带宽）
   if (isCrawler) {
     console.info('[video-bg] 检测到爬虫，跳过加载');
     return;
   }
-
-  // ✅ 用户偏好设置：显示彩蛋（尊重用户但给点惊喜）
-  if (prefersReducedMotion || saveData) {
-    // showEgg(CFG.eggMessage, CFG.eggImage);
-    // 别想要彩蛋！😤
-    return;
-  }
-
-  // ✅ 移动端：小概率显示彩蛋，否则什么都不做
+  if (prefersReducedMotion || saveData) return;
   if (isMobileOrTablet) {
-    if (Math.random() < CFG.mobileEggProbability) {
-      showEgg(CFG.eggMessage, CFG.eggImage);
-    }
+    if (Math.random() < CFG.mobileEggProbability) showEgg(CFG.eggMessage, CFG.eggImage);
     return;
   }
 
-  /** =========================
-   *  从缓存/随机获取视频
-   *  ========================= */
+  /* ========================
+   * 视频选取（缓存 / 随机）
+   * ======================== */
   const cached = getCachedVideo();
-  const selected = cached !== null ? cached : pickAndCacheRandomVideo(CFG.sources, CFG.cacheIntervalMs);
+  const selected = cached !== null ? cached : pickAndCacheRandomVideo();
 
   if (!selected) {
-    // 命中彩蛋：显示彩蛋
     showEgg(CFG.eggMessage, CFG.eggImage);
     return;
   }
 
-  /** =========================
-   *  可选注入最小 CSS（避免挡住内容 & 充满可视区）
-   *  ========================= */
-  if (CFG.injectCSS) {
-    injectMinimalCSS();
+  if (CFG.injectCSS) injectMinimalCSS();
+
+  /* ========================
+   * 初始化（async：可能需要加载 hls.js）
+   * ======================== */
+  init(selected);
+
+  async function init(url) {
+    const videoEl = document.createElement('video');
+    videoEl.id = 'DynamicWallpaper';
+    videoEl.autoplay = true;
+    videoEl.muted = true;
+    videoEl.loop = true;
+    videoEl.playsInline = true;
+    videoEl.preload = 'auto';
+    videoEl.setAttribute('aria-hidden', 'true');
+    videoEl.disablePictureInPicture = true;
+
+    const nativeHls = !!videoEl.canPlayType('application/vnd.apple.mpegurl');
+
+    if (nativeHls) {
+      // Safari：原生 HLS
+      videoEl.src = url;
+      attachNativeRetry(videoEl, url);
+    } else {
+      // Chrome / Firefox / Edge：需要 hls.js
+      try {
+        await loadScript(CFG.hlsJsUrl);
+      } catch {
+        console.warn('[video-bg] hls.js 加载失败');
+        return;
+      }
+      if (!window.Hls || !Hls.isSupported()) {
+        console.warn('[video-bg] 浏览器不支持 HLS');
+        return;
+      }
+      const hls = new Hls();
+      hls.loadSource(url);
+      hls.attachMedia(videoEl);
+
+      hls.on(Hls.Events.ERROR, function (_, data) {
+        if (!data.fatal) return;
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            console.warn('[video-bg] 网络错误，尝试恢复');
+            hls.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            console.warn('[video-bg] 媒体错误，尝试恢复');
+            hls.recoverMediaError();
+            break;
+          default:
+            console.warn('[video-bg] 致命错误，放弃加载');
+            hls.destroy();
+            videoEl.remove();
+            return;
+        }
+      });
+
+      videoEl._hls = hls;
+    }
+
+    document.body.appendChild(videoEl);
+    videoEl.play().catch(function () {});
+
+    // 标签页可见性
+    if (CFG.pauseOnHidden) {
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          try { videoEl.pause(); } catch (_) {}
+        } else if (!videoEl.dataset.userDisabled) {
+          videoEl.play().catch(function () {});
+        }
+      });
+    }
+
+    // 点击恢复播放
+    document.addEventListener('click', function () {
+      if (videoEl.dataset.userDisabled) return;
+      if (videoEl.isConnected && videoEl.paused) {
+        videoEl.play().catch(function () {});
+      }
+    }, { passive: true });
+
+    // 特殊视频：挂载解除静音按钮
+    if (specialVideoUrls.includes(url)) {
+      mountUnmuteButton(videoEl);
+    }
   }
 
-  /** =========================
-   *  预加载提示（<link rel="preload" as="video">）
-   *  ========================= */
-  try {
-    const preload = document.createElement('link');
-    preload.rel = 'preload';
-    preload.as = 'video';
-    preload.href = selected;
-    preload.type = 'video/webm';
-    document.head.appendChild(preload);
-  } catch (_) { /* 忽略 */ }
+  /* ========================
+   * 工具函数
+   * ======================== */
 
-  /** =========================
-   *  构建并挂载 <video id="DynamicWallpaper">
-   *  ========================= */
-  const videoEl = document.createElement('video');
-  videoEl.id = 'DynamicWallpaper';
-  videoEl.src = selected;
-  videoEl.autoplay = true;
-  videoEl.muted = true;
-  videoEl.loop = true;
-  videoEl.preload = 'auto';
-  videoEl.playsInline = true;
-  videoEl.setAttribute('aria-hidden', 'true');
-  videoEl.disablePictureInPicture = true;
-
-  // 提前尝试加载与播放
-  safeLoadAndPlay(videoEl);
-
-  // 错误重试（带指数退避、最大次数）
-  attachRetryWithBackoff(videoEl, CFG.retry);
-
-  // 标签页可见性：隐藏暂停，返回播放
-  if (CFG.pauseOnHidden) {
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        try { videoEl.pause(); } catch (_) { }
-      } else {
-        try { videoEl.play(); } catch (_) { }
-      }
+  function loadScript(url) {
+    return new Promise(function (resolve, reject) {
+      if (window.Hls) { resolve(); return; }
+      var s = document.createElement('script');
+      s.src = url;
+      s.onload = resolve;
+      s.onerror = function () { reject(new Error('Script load failed')); };
+      document.head.appendChild(s);
     });
   }
 
-  // 用户交互兜底：任意点击尝试恢复播放
-  document.addEventListener('click', () => {
-    if (videoEl.dataset.userDisabled) return;  // 尊重用户手动关闭的选择
-    if (videoEl.isConnected && videoEl.paused) {
-      videoEl.play().catch(() => { });
-    }
-  }, { passive: true });
-
-  // 仅当命中"特定视频"才显示解除静音按钮
-  if (CFG.specialVideos.includes(selected)) {
-    mountUnmuteButton(videoEl);
+  /** Safari 原生 HLS 的简单重试 */
+  function attachNativeRetry(video, url) {
+    var attempts = 0;
+    video.addEventListener('error', function () {
+      attempts++;
+      if (attempts > CFG.retryMaxAttempts) {
+        console.warn('[video-bg] 加载失败次数过多，放弃');
+        video.remove();
+        return;
+      }
+      var delay = Math.min(CFG.retryMaxDelayMs, CFG.retryBaseDelayMs * Math.pow(2, attempts - 1));
+      console.warn('[video-bg] 加载错误，' + delay + 'ms 后重试（' + attempts + '/' + CFG.retryMaxAttempts + '）');
+      setTimeout(function () {
+        video.src = url;
+        video.play().catch(function () {});
+      }, delay);
+    });
   }
-
-  // 最后挂载到页面
-  document.body.appendChild(videoEl);
-
-  /** =========================
-   *  工具函数区域
-   *  ========================= */
 
   function getCachedVideo() {
     try {
-      const raw = localStorage.getItem('randomVideoData');
+      var raw = localStorage.getItem(CFG.cacheKey);
       if (!raw) return null;
 
-      const data = JSON.parse(raw);
-      if (typeof data !== 'object' || data === null) {
-        throw new Error('Invalid data');
-      }
+      var data = JSON.parse(raw);
+      if (typeof data !== 'object' || data === null) throw new Error('Invalid data');
 
-      const { video, time } = data;
+      var video = data.video;
+      var time = data.time;
 
-      if (typeof video !== 'string' || !video) {
-        throw new Error('Invalid video');
-      }
-
-      if (!isValidVideoUrl(video)) {
-        throw new Error('Invalid URL format');
-      }
-
-      if (typeof time !== 'number' || time <= 0) {
-        throw new Error('Invalid time');
-      }
-
-      if (time - Date.now() > 30 * 24 * 60 * 60 * 1000) {
-        throw new Error('Clock skew too large');
-      }
-
-      if (Date.now() - time > CFG.cacheIntervalMs) {
-        return null;
-      }
+      if (typeof video !== 'string' || !video) throw new Error('Invalid video');
+      if (!isValidVideoUrl(video)) throw new Error('Invalid URL format');
+      if (typeof time !== 'number' || time <= 0) throw new Error('Invalid time');
+      if (time - Date.now() > 30 * 24 * 60 * 60 * 1000) throw new Error('Clock skew too large');
+      if (Date.now() - time > CFG.cacheIntervalMs) return null;
 
       return video;
-
     } catch (err) {
       console.warn('[video-bg] 缓存异常，已清理:', err.message);
-      try {
-        localStorage.removeItem('randomVideoData');
-      } catch (_) { }
+      try { localStorage.removeItem(CFG.cacheKey); } catch (_) {}
       return null;
     }
   }
@@ -213,113 +233,72 @@
   function isValidVideoUrl(url) {
     if (typeof url !== 'string') return false;
 
-    // 正则严格匹配
-    const pattern = /^https:\/\/raw\.loliloli\.mom\/videos\/background(\d{1,3})\.webm$/;
-    const match = url.match(pattern);
+    // 从 CFG.videoBase 构建正则
+    var escaped = CFG.videoBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var pattern = new RegExp('^' + escaped + 'background(\\d{1,3})\\/index\\.m3u8$');
+    var match = url.match(pattern);
     if (!match) return false;
 
-    // 范围检查
-    const num = parseInt(match[1], 10);
-    if (num < 1 || num > 85) return false;
-
-    // 检查不可见字符
+    var num = parseInt(match[1], 10);
+    if (num < 1 || num > CFG.videoCount) return false;
     if (/[\x00-\x1F\x7F-\x9F\uFFFD]/.test(url)) return false;
-
-    // 长度检查
     if (url.length > 500) return false;
 
     return true;
   }
 
-  function pickAndCacheRandomVideo(sources, intervalMs) {
-    const video = Math.random() < CFG.eggProbability
+  function pickAndCacheRandomVideo() {
+    var video = Math.random() < CFG.eggProbability
       ? ''
       : sources[Math.floor(Math.random() * sources.length)];
 
-    // 只缓存有效视频，不缓存彩蛋
     if (video) {
       try {
-        localStorage.setItem('randomVideoData', JSON.stringify({
-          video,
+        localStorage.setItem(CFG.cacheKey, JSON.stringify({
+          video: video,
           time: Date.now(),
-          ttl: intervalMs
+          ttl: CFG.cacheIntervalMs
         }));
       } catch (err) {
         console.warn('[video-bg] 缓存失败:', err.message);
       }
     }
-
     return video;
   }
 
   function injectMinimalCSS() {
     try {
-      const css = `
-        #DynamicWallpaper{
-          position:fixed;
-          inset:0;
-          min-width:100vw;
-          min-height:100vh;
-          object-fit:cover;
-          z-index:-1;
-          pointer-events:none;
-        }`;
-      const style = document.createElement('style');
-      style.textContent = css;
+      var style = document.createElement('style');
+      style.textContent =
+        '#DynamicWallpaper{' +
+        'position:fixed;inset:0;min-width:100vw;min-height:100vh;' +
+        'object-fit:cover;z-index:-1;pointer-events:none}';
       document.head.appendChild(style);
-    } catch (_) { }
+    } catch (_) {}
   }
 
-  function safeLoadAndPlay(video) {
-    try { video.load(); } catch (_) { }
-    try { video.play(); } catch (_) { }
-  }
-
-  function attachRetryWithBackoff(video, retryCfg) {
-    let attempts = 0;
-
-    video.addEventListener('error', () => {
-      attempts += 1;
-
-      if (attempts > retryCfg.maxAttempts) {
-        console.warn('[video-bg] 加载失败次数过多，放弃加载');
-        video.remove();
-        return;
-      }
-
-      const delay = Math.min(retryCfg.maxDelayMs, retryCfg.baseDelayMs * Math.pow(2, attempts - 1));
-      console.warn(`[video-bg] 加载错误，${delay}ms 后重试（第 ${attempts}/${retryCfg.maxAttempts} 次）…`);
-
-      setTimeout(() => {
-        safeLoadAndPlay(video);
-      }, delay);
-    });
-  }
+  /* ========================
+   * 解除静音按钮（特殊视频）
+   * ======================== */
 
   function mountUnmuteButton(video) {
-    let isFirstUnmute = true;
-    let hasUnmutedOnceByDoc = false;
+    var isFirstUnmute = true;
+    var hasUnmutedOnceByDoc = false;
 
-    function showFirstUnmuteBanner() {
+    function showBanner() {
       if (!CFG.showFirstUnmuteBanner || !isFirstUnmute) return;
-      const n = document.createElement('div');
-      n.textContent = '😮发现特殊动态背景，已开启声音！';
+      var n = document.createElement('div');
+      n.textContent = CFG.unmuteBannerText;
       n.style.cssText = [
-        'position:fixed',
-        'bottom:80px',
-        'right:20px',
+        'position:fixed', 'bottom:80px', 'right:20px',
         'background:linear-gradient(135deg, rgba(255,0,0,0.2), rgba(0,255,0,0.2), rgba(0,0,255,0.2))',
-        'backdrop-filter:blur(10px)',
-        'color:#FF69B4',
-        'padding:8px 16px',
-        'border-radius:8px',
-        'z-index:9999',
-        'font-size:12px',
-        'box-shadow:0 4px 15px rgba(0,0,0,0.2)',
+        'backdrop-filter:blur(10px)', 'color:#FF69B4',
+        'padding:8px 16px', 'border-radius:8px', 'z-index:9999',
+        'font-size:12px', 'box-shadow:0 4px 15px rgba(0,0,0,0.2)',
         'border:1px solid rgba(255,255,255,0.2)'
       ].join(';');
       document.body.appendChild(n);
-      setTimeout(() => n.remove(), 3000);
+      setTimeout(function () { n.remove(); }, CFG.unmuteBannerDurationMs);
     }
 
     function toggleMute(ev) {
@@ -328,13 +307,13 @@
       btn.textContent = video.muted ? '🔇' : '🔊';
       btn.setAttribute('aria-pressed', String(!video.muted));
       if (!video.muted) {
-        showFirstUnmuteBanner();
-        video.play().catch(() => { });
+        showBanner();
+        video.play().catch(function () {});
         isFirstUnmute = false;
       }
     }
 
-    const btn = document.createElement('button');
+    var btn = document.createElement('button');
     btn.type = 'button';
     btn.id = 'DynamicWallpaperUnmute';
     btn.setAttribute('aria-pressed', 'false');
@@ -343,48 +322,33 @@
 
     if (CFG.uiStyle === 'original') {
       btn.style.cssText = [
-        'position:fixed',
-        'bottom:20px',
-        'right:120px',
-        'background:rgba(255,255,255,0.3)',
-        'backdrop-filter:blur(10px)',
-        'color:black',
-        'border:none',
-        'padding:8px 12px',
-        'border-radius:50%',
-        'cursor:pointer',
-        'z-index:9999',
-        'font-size:14px',
-        'box-shadow:0 2px 10px rgba(0,0,0,0.1)',
-        'transition:opacity .3s ease',
-        'opacity:0.9'
+        'position:fixed', 'bottom:20px', 'right:120px',
+        'background:rgba(255,255,255,0.3)', 'backdrop-filter:blur(10px)',
+        'color:black', 'border:none', 'padding:8px 12px',
+        'border-radius:50%', 'cursor:pointer', 'z-index:9999',
+        'font-size:14px', 'box-shadow:0 2px 10px rgba(0,0,0,0.1)',
+        'transition:opacity .3s ease', 'opacity:0.9'
       ].join(';');
-      let hideTimeout;
-      btn.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); btn.style.opacity = '1'; });
-      btn.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { btn.style.opacity = '0'; }, 3000); });
+      var hideTimeout;
+      btn.addEventListener('mouseenter', function () { clearTimeout(hideTimeout); btn.style.opacity = '1'; });
+      btn.addEventListener('mouseleave', function () { hideTimeout = setTimeout(function () { btn.style.opacity = '0'; }, 3000); });
     } else {
-      btn.style.position = 'fixed';
-      btn.style.bottom = '20px';
-      btn.style.right = '20px';
-      btn.style.background = 'rgba(0,0,0,0.5)';
-      btn.style.color = '#fff';
-      btn.style.border = '1px solid rgba(255,255,255,0.3)';
-      btn.style.borderRadius = '8px';
-      btn.style.padding = '8px 10px';
-      btn.style.fontSize = '14px';
-      btn.style.cursor = 'pointer';
-      btn.style.zIndex = '9999';
-      btn.style.backdropFilter = 'blur(4px)';
-      btn.style.transition = 'opacity .3s ease';
-      btn.style.opacity = '0.9';
-      btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
-      btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.9'; });
+      btn.style.cssText = [
+        'position:fixed', 'bottom:20px', 'right:20px',
+        'background:rgba(0,0,0,0.5)', 'color:#fff',
+        'border:1px solid rgba(255,255,255,0.3)', 'border-radius:8px',
+        'padding:8px 10px', 'font-size:14px', 'cursor:pointer',
+        'z-index:9999', 'backdrop-filter:blur(4px)',
+        'transition:opacity .3s ease', 'opacity:0.9'
+      ].join(';');
+      btn.addEventListener('mouseenter', function () { btn.style.opacity = '1'; });
+      btn.addEventListener('mouseleave', function () { btn.style.opacity = '0.9'; });
     }
 
     btn.addEventListener('click', toggleMute);
 
     if (CFG.autoUnmuteOnFirstClick) {
-      document.addEventListener('click', () => {
+      document.addEventListener('click', function () {
         if (video.muted && !hasUnmutedOnceByDoc) {
           hasUnmutedOnceByDoc = true;
           toggleMute();
@@ -395,14 +359,18 @@
     document.body.appendChild(btn);
   }
 
+  /* ========================
+   * 彩蛋
+   * ======================== */
+
   function showEgg(message, imageUrl) {
-    const wrap = document.createElement('div');
+    var wrap = document.createElement('div');
     wrap.style.textAlign = 'center';
     wrap.style.marginTop = '20%';
 
-    const p = document.createElement('p');
+    var p = document.createElement('p');
     p.textContent = message;
-    const img = document.createElement('img');
+    var img = document.createElement('img');
     img.src = imageUrl;
     img.alt = '彩蛋图片';
 

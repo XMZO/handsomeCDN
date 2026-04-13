@@ -1,1 +1,5 @@
 10.0.0/assets/worker.js
+/10.0.0/assets/.claude
+/10.0.0/assets/node_modules
+10.0.0/assets/package-lock.json
+10.0.0/assets/package.json
