@@ -40,7 +40,16 @@
     pauseOnHidden: false,                                 // 标签页不可见时暂停
     autoUnmuteOnFirstClick: true,                         // 首次点击页面自动取消静音（仅特殊视频）
     showFirstUnmuteBanner: true,                          // 首次取消静音时弹出提示条
-    uiStyle: 'original'                                   // 解除静音按钮样式
+    uiStyle: 'original',                                  // 解除静音按钮样式
+
+    // ========== ORB 绕过 ==========
+    // jsdelivr 把 .m3u8 当 text/plain 返回，Chrome 的 ORB 会拦截。
+    // 解决：转换脚本生成 playlists.js（一份 JS 文件，包含所有 m3u8 内容），
+    //      由 <script> 加载（JS 不受 ORB 限制），再以 Blob URL 喂给 hls.js。
+    // 未来迁到可控 MIME 的 CDN（如 R2）后，把这里设为 false 即可关闭，
+    // 然后就可以删除下面 "ORB 绕过 BEGIN ~ END" 之间的整段代码。
+    useInlinePlaylists: true,
+    playlistsJsPath: 'playlists.js'                       // 相对于 videoBase
   };
 
   // 由 CFG 派生的 URL 列表
@@ -117,23 +126,34 @@
         console.warn('[video-bg] 浏览器不支持 HLS');
         return;
       }
-      // 手动 fetch m3u8，绕过 ORB 对 text/plain 的拦截
-      var m3u8Text;
-      try {
-        var resp = await fetch(url, { mode: 'cors' });
-        m3u8Text = await resp.text();
-      } catch {
-        console.warn('[video-bg] m3u8 加载失败');
-        return;
+      // --- ORB 绕过 BEGIN ---
+      // jsdelivr 把 .m3u8 当 text/plain 返回，Chrome 的 ORB 会拦截。
+      // 解决：从预加载的 playlists.js 读取 m3u8 内容，以 Blob URL 喂给 hls.js。
+      // 迁移到可控 MIME 的 CDN（如 R2）后，设 CFG.useInlinePlaylists = false，
+      // 然后删除 BEGIN ~ END 之间的整段代码即可。
+      var hlsSource = url;
+      if (CFG.useInlinePlaylists) {
+        try {
+          await loadScript(CFG.videoBase + CFG.playlistsJsPath);
+        } catch {
+          console.warn('[video-bg] playlists.js 加载失败');
+          return;
+        }
+        var num = extractVideoNumber(url);
+        var m3u8Text = window.VIDEO_PLAYLISTS && window.VIDEO_PLAYLISTS[num];
+        if (!m3u8Text) {
+          console.warn('[video-bg] 未找到 playlist #' + num);
+          return;
+        }
+        var base = url.substring(0, url.lastIndexOf('/') + 1);
+        m3u8Text = m3u8Text.replace(/^([^#\s].+\.ts.*)$/gm, base + '$1');
+        var blob = new Blob([m3u8Text], { type: 'application/vnd.apple.mpegurl' });
+        hlsSource = URL.createObjectURL(blob);
       }
-      // 把分片的相对路径改成绝对路径
-      var base = url.substring(0, url.lastIndexOf('/') + 1);
-      m3u8Text = m3u8Text.replace(/^([^#\s].+\.ts.*)$/gm, base + '$1');
-      var blob = new Blob([m3u8Text], { type: 'application/vnd.apple.mpegurl' });
-      var blobUrl = URL.createObjectURL(blob);
+      // --- ORB 绕过 END ---
 
       const hls = new Hls();
-      hls.loadSource(blobUrl);
+      hls.loadSource(hlsSource);
       hls.attachMedia(videoEl);
 
       hls.on(Hls.Events.ERROR, function (_, data) {
@@ -190,15 +210,22 @@
    * 工具函数
    * ======================== */
 
+  var loadedScripts = {};
   function loadScript(url) {
     return new Promise(function (resolve, reject) {
-      if (window.Hls) { resolve(); return; }
+      if (loadedScripts[url]) { resolve(); return; }
       var s = document.createElement('script');
       s.src = url;
-      s.onload = resolve;
-      s.onerror = function () { reject(new Error('Script load failed')); };
+      s.onload = function () { loadedScripts[url] = true; resolve(); };
+      s.onerror = function () { reject(new Error('Script load failed: ' + url)); };
       document.head.appendChild(s);
     });
+  }
+
+  // 从 m3u8 URL 提取视频编号: .../background12/index.m3u8 -> "12"
+  function extractVideoNumber(url) {
+    var m = url.match(/\/background(\d+)\/index\.m3u8$/);
+    return m ? m[1] : null;
   }
 
   /** Safari 原生 HLS 的简单重试 */
