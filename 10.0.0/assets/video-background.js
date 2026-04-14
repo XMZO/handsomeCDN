@@ -134,7 +134,8 @@
       var hlsSource = url;
       if (CFG.useInlinePlaylists) {
         try {
-          await loadScript(CFG.videoBase + CFG.playlistsJsPath);
+          var bustKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+          await loadScript(CFG.videoBase + CFG.playlistsJsPath + '?v=' + bustKey);
         } catch {
           console.warn('[video-bg] playlists.js 加载失败');
           return;
@@ -146,14 +147,18 @@
           return;
         }
         var base = url.substring(0, url.lastIndexOf('/') + 1);
-        // 把所有相对路径改成绝对路径（处理分片行 + #EXT-X-MAP 的 init 路径）
+        // 把所有相对路径改成绝对路径：
+        //   - #EXT-X-MAP:URI="init..." (fMP4 初始化片段)
+        //   - #EXT-X-KEY:URI="xxx.bin" (AES-128 密钥文件)
+        //   - 分片行本身（.m4s / .ts / ...）
         var lines = m3u8Text.split('\n');
         for (var li = 0; li < lines.length; li++) {
           var line = lines[li];
-          var mapMatch = line.match(/^(#EXT-X-MAP:URI=")([^"]+)(".*)$/);
-          if (mapMatch) {
-            if (!/^https?:/i.test(mapMatch[2])) {
-              lines[li] = mapMatch[1] + base + mapMatch[2] + mapMatch[3];
+          // 有 URI="..." 属性的标签
+          if (line.indexOf('#EXT-X-MAP') === 0 || line.indexOf('#EXT-X-KEY') === 0) {
+            var uriMatch = line.match(/URI="([^"]+)"/);
+            if (uriMatch && !/^https?:/i.test(uriMatch[1])) {
+              lines[li] = line.replace(uriMatch[0], 'URI="' + base + uriMatch[1] + '"');
             }
             continue;
           }
