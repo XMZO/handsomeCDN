@@ -108,24 +108,18 @@
     videoEl.setAttribute('aria-hidden', 'true');
     videoEl.disablePictureInPicture = true;
 
-    const nativeHls = !!videoEl.canPlayType('application/vnd.apple.mpegurl');
+    // 优先用 hls.js（绕过 ORB），只有 hls.js 不可用时才走原生 HLS
+    var useHlsJs = false;
+    try {
+      await loadScript(CFG.hlsJsUrl);
+      if (window.Hls && Hls.isSupported()) useHlsJs = true;
+    } catch {}
 
-    if (nativeHls) {
-      // Safari：原生 HLS
+    if (!useHlsJs && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+      // 纯 Safari（无 MSE）：原生 HLS
       videoEl.src = url;
       attachNativeRetry(videoEl, url);
-    } else {
-      // Chrome / Firefox / Edge：需要 hls.js
-      try {
-        await loadScript(CFG.hlsJsUrl);
-      } catch {
-        console.warn('[video-bg] hls.js 加载失败');
-        return;
-      }
-      if (!window.Hls || !Hls.isSupported()) {
-        console.warn('[video-bg] 浏览器不支持 HLS');
-        return;
-      }
+    } else if (useHlsJs) {
       // --- ORB 绕过 BEGIN ---
       // jsdelivr 把 .m3u8 当 text/plain 返回，Chrome 的 ORB 会拦截。
       // 解决：从预加载的 playlists.js 读取 m3u8 内容，以 Blob URL 喂给 hls.js。
@@ -196,6 +190,9 @@
       });
 
       videoEl._hls = hls;
+    } else {
+      console.warn('[video-bg] u6d4fu89c8u5668u4e0du652fu6301 HLS');
+      return;
     }
 
     document.body.appendChild(videoEl);
