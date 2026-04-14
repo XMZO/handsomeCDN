@@ -117,8 +117,23 @@
         console.warn('[video-bg] 浏览器不支持 HLS');
         return;
       }
+      // 手动 fetch m3u8，绕过 ORB 对 text/plain 的拦截
+      var m3u8Text;
+      try {
+        var resp = await fetch(url, { mode: 'cors' });
+        m3u8Text = await resp.text();
+      } catch {
+        console.warn('[video-bg] m3u8 加载失败');
+        return;
+      }
+      // 把分片的相对路径改成绝对路径
+      var base = url.substring(0, url.lastIndexOf('/') + 1);
+      m3u8Text = m3u8Text.replace(/^([^#\s].+\.ts.*)$/gm, base + '$1');
+      var blob = new Blob([m3u8Text], { type: 'application/vnd.apple.mpegurl' });
+      var blobUrl = URL.createObjectURL(blob);
+
       const hls = new Hls();
-      hls.loadSource(url);
+      hls.loadSource(blobUrl);
       hls.attachMedia(videoEl);
 
       hls.on(Hls.Events.ERROR, function (_, data) {
