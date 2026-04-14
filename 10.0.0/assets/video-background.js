@@ -146,7 +146,22 @@
           return;
         }
         var base = url.substring(0, url.lastIndexOf('/') + 1);
-        m3u8Text = m3u8Text.replace(/^([^#\s].+\.ts.*)$/gm, base + '$1');
+        // 把所有相对路径改成绝对路径（处理分片行 + #EXT-X-MAP 的 init 路径）
+        var lines = m3u8Text.split('\n');
+        for (var li = 0; li < lines.length; li++) {
+          var line = lines[li];
+          var mapMatch = line.match(/^(#EXT-X-MAP:URI=")([^"]+)(".*)$/);
+          if (mapMatch) {
+            if (!/^https?:/i.test(mapMatch[2])) {
+              lines[li] = mapMatch[1] + base + mapMatch[2] + mapMatch[3];
+            }
+            continue;
+          }
+          if (!line || line.charAt(0) === '#') continue;
+          if (/^https?:/i.test(line)) continue;
+          lines[li] = base + line;
+        }
+        m3u8Text = lines.join('\n');
         var blob = new Blob([m3u8Text], { type: 'application/vnd.apple.mpegurl' });
         hlsSource = URL.createObjectURL(blob);
       }
