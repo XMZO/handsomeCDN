@@ -49,7 +49,7 @@
     // 未来迁到可控 MIME 的 CDN（如 R2）后，把这里设为 false 即可关闭，
     // 然后就可以删除下面 "ORB 绕过 BEGIN ~ END" 之间的整段代码。
     useInlinePlaylists: true,
-    playlistsJsUrl: 'https://lib.loliloli.mom/handsomeCDN@master/10.0.0/assets/playlists.js'
+    playlistsJsUrl: 'https://raw.loliloli.mom/videos_hls/playlists.js'
   };
 
   // 由 CFG 派生的 URL 列表
@@ -128,12 +128,20 @@
       // 然后删除 BEGIN ~ END 之间的整段代码即可。
       var hlsSource = url;
       if (CFG.useInlinePlaylists) {
-        try {
-          var bustKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-          await loadScript(CFG.playlistsJsUrl + '?v=' + bustKey);
-        } catch {
-          console.warn('[video-bg] playlists.js 加载失败');
-          return;
+        // 用 fetch 拉 playlists.js 文本（CORS 完整，MIME 类型不重要），再手动解析
+        if (!window.VIDEO_PLAYLISTS) {
+          try {
+            var bustKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+            var plResp = await fetch(CFG.playlistsJsUrl + '?v=' + bustKey, { mode: 'cors' });
+            var plText = await plResp.text();
+            // 格式: window.VIDEO_PLAYLISTS={...};
+            var jsonMatch = plText.match(/=\s*(\{[\s\S]*\})\s*;?\s*$/);
+            if (!jsonMatch) throw new Error('invalid playlists.js format');
+            window.VIDEO_PLAYLISTS = JSON.parse(jsonMatch[1]);
+          } catch (e) {
+            console.warn('[video-bg] playlists.js 加载失败:', e.message);
+            return;
+          }
         }
         var num = extractVideoNumber(url);
         var m3u8Text = window.VIDEO_PLAYLISTS && window.VIDEO_PLAYLISTS[num];
