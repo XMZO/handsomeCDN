@@ -95,6 +95,7 @@
   /* ========================
    * 初始化（async：可能需要加载 hls.js）
    * ======================== */
+  var loadedScripts = {};
   init(selected);
 
   async function init(url) {
@@ -227,7 +228,6 @@
    * 工具函数
    * ======================== */
 
-  var loadedScripts = {};
   function loadScript(url) {
     return new Promise(function (resolve, reject) {
       if (loadedScripts[url]) { resolve(); return; }
