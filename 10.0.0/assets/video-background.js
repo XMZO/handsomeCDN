@@ -44,10 +44,10 @@
     showFirstUnmuteBanner: true,                          // 首次取消静音时弹出提示条
     uiStyle: 'original',                                  // 解除静音按钮样式
 
-    // ========== playlists.js ==========
-    // 由 convert_hls.py 生成，包含所有 m3u8 内容 + 特殊视频编号
-    // 同时解决 jsdelivr 的 ORB 问题（.m3u8 被当 text/plain 拦截）
-    playlistsJsUrl: 'https://raw.loliloli.mom/videos_hls/playlists.js'
+    // ========== playlists ==========
+    // 由 convert_hls.py 生成：playlists.json（指针）+ playlists.<hash>.js（数据）
+    // 指针每次页面加载都拿最新，数据文件名含内容哈希可被 CDN 永久缓存
+    playlistsJsonUrl: 'https://raw.loliloli.mom/videos_hls/playlists.json'
   };
 
   // 由 playlists.js 动态填充（start() 中赋值）
@@ -82,13 +82,16 @@
   start();
 
   async function start() {
-    // 1. 加载 playlists.js → 获取视频列表 + 特殊视频编号
+    // 1. 加载 playlists.json 指针（~50 字节，用时间戳绕过缓存）
+    //    → 拿到带内容哈希的实际文件名 → 加载数据（CDN 可永久缓存）
     try {
-      var bustKey = new Date().toISOString().slice(0, 10);
-      var resp = await fetch(CFG.playlistsJsUrl + '?v=' + bustKey, { mode: 'cors' });
-      var text = await resp.text();
+      var metaResp = await fetch(CFG.playlistsJsonUrl + '?t=' + Date.now(), { mode: 'cors' });
+      var meta = await metaResp.json();
+      var baseUrl = CFG.playlistsJsonUrl.substring(0, CFG.playlistsJsonUrl.lastIndexOf('/') + 1);
+      var dataResp = await fetch(baseUrl + meta.file, { mode: 'cors' });
+      var text = await dataResp.text();
       var match = text.match(/=\s*(\{[\s\S]*\})\s*;?\s*$/);
-      if (!match) throw new Error('invalid playlists.js format');
+      if (!match) throw new Error('invalid playlists data');
       window.VIDEO_DATA = JSON.parse(match[1]);
     } catch (e) {
       console.warn('[video-bg] playlists 加载失败:', e.message);
