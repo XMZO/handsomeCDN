@@ -1,6 +1,9 @@
 /* 视频背景（HLS 版）
- * 通过 m3u8 + ts 分片加载背景视频，突破 GitHub 100MB 单文件限制。
+ * 通过 m3u8 + fMP4 分片加载背景视频，突破 GitHub 100MB 单文件限制。
  * Safari 走原生 HLS，其他浏览器通过 hls.js（动态加载）播放。
+ *
+ * 视频列表和特殊视频编号由 playlists.js 自动提供（convert_hls.py 生成），
+ * 添加新视频或特殊视频后重新运行转换脚本即可，不需要改这个文件。
  */
 
 (function () {
@@ -9,8 +12,7 @@
   const CFG = {
     // ========== 视频源 ==========
     videoBase: 'https://raw.loliloli.mom/videos_hls/',   // 视频根路径（末尾带 /）
-    videoCount: 85,                                       // 视频总数（background1 ~ background85）
-    specialVideos: [60, 80, 81],                          // 有声视频编号（会显示解除静音按钮）
+    // videoCount / specialVideos 已自动从 playlists.js 读取，无需手动维护
 
     // ========== hls.js ==========
     hlsJsUrl: 'https://lib.loliloli.mom/handsomeCDN@master/10.0.0/assets/hls.min.js',
@@ -42,23 +44,15 @@
     showFirstUnmuteBanner: true,                          // 首次取消静音时弹出提示条
     uiStyle: 'original',                                  // 解除静音按钮样式
 
-    // ========== ORB 绕过 ==========
-    // jsdelivr 把 .m3u8 当 text/plain 返回，Chrome 的 ORB 会拦截。
-    // 解决：转换脚本生成 playlists.js（一份 JS 文件，包含所有 m3u8 内容），
-    //      由 <script> 加载（JS 不受 ORB 限制），再以 Blob URL 喂给 hls.js。
-    // 未来迁到可控 MIME 的 CDN（如 R2）后，把这里设为 false 即可关闭，
-    // 然后就可以删除下面 "ORB 绕过 BEGIN ~ END" 之间的整段代码。
-    useInlinePlaylists: true,
+    // ========== playlists.js ==========
+    // 由 convert_hls.py 生成，包含所有 m3u8 内容 + 特殊视频编号
+    // 同时解决 jsdelivr 的 ORB 问题（.m3u8 被当 text/plain 拦截）
     playlistsJsUrl: 'https://raw.loliloli.mom/videos_hls/playlists.js'
   };
 
-  // 由 CFG 派生的 URL 列表
-  const sources = Array.from({ length: CFG.videoCount }, (_, i) =>
-    CFG.videoBase + 'background' + (i + 1) + '/index.m3u8'
-  );
-  const specialVideoUrls = CFG.specialVideos.map(n =>
-    CFG.videoBase + 'background' + n + '/index.m3u8'
-  );
+  // 由 playlists.js 动态填充（start() 中赋值）
+  var sources = [];
+  var specialVideoUrls = [];
 
   /* ========================
    * 环境检测 & 提前退出
@@ -79,27 +73,63 @@
     return;
   }
 
-  /* ========================
-   * 视频选取（缓存 / 随机）
-   * ======================== */
-  const cached = getCachedVideo();
-  const selected = cached !== null ? cached : pickAndCacheRandomVideo();
-
-  if (!selected) {
-    showEgg(CFG.eggMessage, CFG.eggImage);
-    return;
-  }
-
   if (CFG.injectCSS) injectMinimalCSS();
 
   /* ========================
-   * 初始化（async：可能需要加载 hls.js）
+   * 主入口（异步）
    * ======================== */
   var loadedScripts = {};
-  init(selected);
+  start();
 
-  async function init(url) {
-    const videoEl = document.createElement('video');
+  async function start() {
+    // 1. 加载 playlists.js → 获取视频列表 + 特殊视频编号
+    try {
+      var bustKey = new Date().toISOString().slice(0, 10);
+      var resp = await fetch(CFG.playlistsJsUrl + '?v=' + bustKey, { mode: 'cors' });
+      var text = await resp.text();
+      var match = text.match(/=\s*(\{[\s\S]*\})\s*;?\s*$/);
+      if (!match) throw new Error('invalid playlists.js format');
+      window.VIDEO_DATA = JSON.parse(match[1]);
+    } catch (e) {
+      console.warn('[video-bg] playlists 加载失败:', e.message);
+      return;
+    }
+
+    var playlists = window.VIDEO_DATA.playlists || {};
+    var specialNums = window.VIDEO_DATA.special || [];
+
+    // 从 playlists 的 key 构建视频 URL 列表
+    var videoNums = Object.keys(playlists).map(Number).sort(function (a, b) { return a - b; });
+    sources = videoNums.map(function (n) {
+      return CFG.videoBase + 'background' + n + '/index.m3u8';
+    });
+    specialVideoUrls = specialNums.map(function (n) {
+      return CFG.videoBase + 'background' + n + '/index.m3u8';
+    });
+
+    if (sources.length === 0) {
+      console.warn('[video-bg] playlists.js 中没有视频');
+      return;
+    }
+
+    // 2. 选择视频（缓存 / 随机）
+    var cached = getCachedVideo();
+    var selected = cached !== null ? cached : pickAndCacheRandomVideo();
+
+    if (!selected) {
+      showEgg(CFG.eggMessage, CFG.eggImage);
+      return;
+    }
+
+    // 3. 初始化播放
+    await initPlayer(selected);
+  }
+
+  /* ========================
+   * 播放器初始化
+   * ======================== */
+  async function initPlayer(url) {
+    var videoEl = document.createElement('video');
     videoEl.id = 'DynamicWallpaper';
     videoEl.autoplay = true;
     videoEl.muted = true;
@@ -114,50 +144,31 @@
     try {
       await loadScript(CFG.hlsJsUrl);
       if (window.Hls && Hls.isSupported()) useHlsJs = true;
-    } catch {}
+    } catch (e) {}
 
     if (!useHlsJs && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      // 纯 Safari（无 MSE）：原生 HLS
+      // 纯 Safari（无 MSE）：原生 HLS，直接播放 m3u8 URL
       videoEl.src = url;
       attachNativeRetry(videoEl, url);
     } else if (useHlsJs) {
-      // --- ORB 绕过 BEGIN ---
+      // --- ORB 绕过 ---
       // jsdelivr 把 .m3u8 当 text/plain 返回，Chrome 的 ORB 会拦截。
-      // 解决：从预加载的 playlists.js 读取 m3u8 内容，以 Blob URL 喂给 hls.js。
-      // 迁移到可控 MIME 的 CDN（如 R2）后，设 CFG.useInlinePlaylists = false，
-      // 然后删除 BEGIN ~ END 之间的整段代码即可。
+      // 解决：从已加载的 VIDEO_DATA 读取 m3u8 内容，把相对路径改成绝对路径，
+      //       再以 Blob URL 喂给 hls.js。
       var hlsSource = url;
-      if (CFG.useInlinePlaylists) {
-        // 用 fetch 拉 playlists.js 文本（CORS 完整，MIME 类型不重要），再手动解析
-        if (!window.VIDEO_PLAYLISTS) {
-          try {
-            var bustKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-            var plResp = await fetch(CFG.playlistsJsUrl + '?v=' + bustKey, { mode: 'cors' });
-            var plText = await plResp.text();
-            // 格式: window.VIDEO_PLAYLISTS={...};
-            var jsonMatch = plText.match(/=\s*(\{[\s\S]*\})\s*;?\s*$/);
-            if (!jsonMatch) throw new Error('invalid playlists.js format');
-            window.VIDEO_PLAYLISTS = JSON.parse(jsonMatch[1]);
-          } catch (e) {
-            console.warn('[video-bg] playlists.js 加载失败:', e.message);
-            return;
-          }
-        }
+      var playlists = window.VIDEO_DATA && window.VIDEO_DATA.playlists;
+      if (playlists) {
         var num = extractVideoNumber(url);
-        var m3u8Text = window.VIDEO_PLAYLISTS && window.VIDEO_PLAYLISTS[num];
+        var m3u8Text = playlists[num];
         if (!m3u8Text) {
           console.warn('[video-bg] 未找到 playlist #' + num);
           return;
         }
         var base = url.substring(0, url.lastIndexOf('/') + 1);
-        // 把所有相对路径改成绝对路径：
-        //   - #EXT-X-MAP:URI="init..." (fMP4 初始化片段)
-        //   - #EXT-X-KEY:URI="xxx.bin" (AES-128 密钥文件)
-        //   - 分片行本身（.m4s / .ts / ...）
         var lines = m3u8Text.split('\n');
         for (var li = 0; li < lines.length; li++) {
           var line = lines[li];
-          // 有 URI="..." 属性的标签
+          // URI="..." 属性（#EXT-X-MAP / #EXT-X-KEY）
           if (line.indexOf('#EXT-X-MAP') === 0 || line.indexOf('#EXT-X-KEY') === 0) {
             var uriMatch = line.match(/URI="([^"]+)"/);
             if (uriMatch && !/^https?:/i.test(uriMatch[1])) {
@@ -173,9 +184,8 @@
         var blob = new Blob([m3u8Text], { type: 'application/vnd.apple.mpegurl' });
         hlsSource = URL.createObjectURL(blob);
       }
-      // --- ORB 绕过 END ---
 
-      const hls = new Hls();
+      var hls = new Hls();
       hls.loadSource(hlsSource);
       hls.attachMedia(videoEl);
 
@@ -200,7 +210,7 @@
 
       videoEl._hls = hls;
     } else {
-      console.warn('[video-bg] u6d4fu89c8u5668u4e0du652fu6301 HLS');
+      console.warn('[video-bg] 浏览器不支持 HLS');
       return;
     }
 
@@ -227,7 +237,7 @@
     }, { passive: true });
 
     // 特殊视频：挂载解除静音按钮
-    if (specialVideoUrls.includes(url)) {
+    if (specialVideoUrls.indexOf(url) !== -1) {
       mountUnmuteButton(videoEl);
     }
   }
@@ -299,19 +309,11 @@
 
   function isValidVideoUrl(url) {
     if (typeof url !== 'string') return false;
-
-    // 从 CFG.videoBase 构建正则
+    // sources 已从 playlists.js 动态生成，直接查表
+    if (sources.length > 0) return sources.indexOf(url) !== -1;
+    // 兜底：playlists.js 尚未加载时的基本格式检查
     var escaped = CFG.videoBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    var pattern = new RegExp('^' + escaped + 'background(\\d{1,3})\\/index\\.m3u8$');
-    var match = url.match(pattern);
-    if (!match) return false;
-
-    var num = parseInt(match[1], 10);
-    if (num < 1 || num > CFG.videoCount) return false;
-    if (/[\x00-\x1F\x7F-\x9F\uFFFD]/.test(url)) return false;
-    if (url.length > 500) return false;
-
-    return true;
+    return new RegExp('^' + escaped + 'background\\d{1,3}\\/index\\.m3u8$').test(url);
   }
 
   function pickAndCacheRandomVideo() {
