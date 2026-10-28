@@ -1,8 +1,10 @@
 (function () {
   'use strict';
+  // 国内访客的页面由 ESA 返回（window.SUKI_CN，见主题 head），背景改走 raw.sukimoe.com（ESA 国内节点）
+  const RAW = window.SUKI_CN ? 'https://raw.sukimoe.com/' : 'https://raw.loliloli.mom/';
   const CFG = {
-    manifest: 'https://raw.loliloli.mom/imgs/bg-manifest.json',
-    base: 'https://raw.loliloli.mom/imgs/',
+    manifest: RAW + 'imgs/bg-manifest.json',
+    base: RAW + 'imgs/',
     fallbackColor: '#6A6B6F',
     mobileQuery: '(max-width: 767px)',
     cacheKey: 'bgMixCache',

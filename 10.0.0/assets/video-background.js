@@ -8,14 +8,17 @@
 
 (function () {
   'use strict';
+  // 国内访客的页面由 ESA 返回（window.SUKI_CN，见主题 head），视频和 hls.js 改走 raw/lib.sukimoe.com（ESA 国内节点）
+  const RAW = window.SUKI_CN ? 'https://raw.sukimoe.com/' : 'https://raw.loliloli.mom/';
+  const LIB = window.SUKI_CN ? 'https://lib.sukimoe.com/' : 'https://lib.loliloli.mom/';
 
   const CFG = {
     // ========== 视频源 ==========
-    videoBase: 'https://raw.loliloli.mom/videos_hls/',   // 视频根路径（末尾带 /）
+    videoBase: RAW + 'videos_hls/',   // 视频根路径（末尾带 /）
     // videoCount / specialVideos 已自动从 playlists.js 读取，无需手动维护
 
     // ========== hls.js ==========
-    hlsJsUrl: 'https://lib.loliloli.mom/handsomeCDN@master/10.0.0/assets/hls.min.js',
+    hlsJsUrl: LIB + 'handsomeCDN@master/10.0.0/assets/hls.min.js',
 
     // ========== 缓存 ==========
     cacheKey: 'randomVideoData',                          // localStorage 键名
@@ -24,7 +27,7 @@
     // ========== 彩蛋 ==========
     eggProbability: 0.01,                                 // 桌面端彩蛋概率（1%）
     mobileEggProbability: 0.005,                          // 移动端彩蛋概率（0.5%）
-    eggImage: 'https://raw.loliloli.mom/imgs/H.webp',
+    eggImage: RAW + 'imgs/H.webp',
     eggMessage: '🎉 恭喜发现彩蛋！🥵🥵🥵',
 
     // ========== Safari 重试 ==========
@@ -47,7 +50,7 @@
     // ========== playlists ==========
     // 由 convert_hls.py 生成：playlists.json（指针）+ playlists.<hash>.js（数据）
     // 指针每次页面加载都拿最新，数据文件名含内容哈希可被 CDN 永久缓存
-    playlistsJsonUrl: 'https://raw.loliloli.mom/videos_hls/playlists.json'
+    playlistsJsonUrl: RAW + 'videos_hls/playlists.json'
   };
 
   // 由 playlists.js 动态填充（start() 中赋值）
